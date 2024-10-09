@@ -45,7 +45,7 @@ sysml = [
     "protoflow-derive?/sysml",
     "protoflow-syntax?/sysml",
 ]
-tokio = []
+tokio = ["protoflow-core/tokio"]
 tracing = ["dep:tracing", "clientele?/tracing"] # FIXME
 unstable = [
     "protoflow-blocks?/unstable",
@@ -82,6 +82,8 @@ protoflow-zeromq = { version = "=0.4.1", default-features = false, optional = tr
 tracing = { version = "0.1", default-features = false, optional = true }
 
 [dev-dependencies]
+tokio = { version = "1.40.0", default-features = false }
+async-trait = { version = "0.1.83" }
 
 [[bin]]
 name = "protoflow"

@@ -7,15 +7,26 @@ use crate::{
     },
     transport::Transport,
     transports::MpscTransport,
-    Block, BlockError, BlockResult, BlockRuntime, Port, Process, ProcessID, Runtime, System,
+    Block, BlockError, BlockResult, BlockRuntime, BoxedBlockType, Port, Process, ProcessID,
+    Runtime, System,
 };
+
+#[cfg(feature = "tokio")]
+use crate::AsyncBlock;
 
 #[cfg(feature = "std")]
 extern crate std;
 
+#[cfg(feature = "tokio")]
+pub type TokioRuntime = tokio::runtime::Handle;
+
 #[allow(unused)]
 pub struct StdRuntime<T: Transport = MpscTransport> {
     pub(crate) transport: Arc<T>,
+
+    #[cfg(feature = "tokio")]
+    pub(crate) tokio_handle: Option<TokioRuntime>,
+
     is_alive: AtomicBool,
     process_id: AtomicUsize,
 }
@@ -25,6 +36,19 @@ impl<T: Transport> StdRuntime<T> {
     pub fn new(transport: T) -> Result<Arc<Self>, BlockError> {
         Ok(Arc::new(Self {
             transport: Arc::new(transport),
+            #[cfg(feature = "tokio")]
+            tokio_handle: None,
+            is_alive: AtomicBool::new(true),
+            process_id: AtomicUsize::new(1),
+        }))
+    }
+
+    #[cfg(feature = "tokio")]
+    pub fn new_async(transport: T, tokio_handle: TokioRuntime) -> Result<Arc<Self>, BlockError> {
+        Ok(Arc::new(Self {
+            transport: Arc::new(transport),
+            #[cfg(feature = "tokio")]
+            tokio_handle: Some(tokio_handle),
             is_alive: AtomicBool::new(true),
             process_id: AtomicUsize::new(1),
         }))
@@ -32,28 +56,74 @@ impl<T: Transport> StdRuntime<T> {
 }
 
 impl<T: Transport + 'static> Runtime for Arc<StdRuntime<T>> {
-    fn execute_block(&mut self, block: Box<dyn Block>) -> BlockResult<Rc<dyn Process>> {
-        let block_runtime = Arc::new((*self).clone()) as Arc<dyn BlockRuntime>;
+    fn execute_block(&mut self, block: BoxedBlockType) -> BlockResult<Rc<dyn Process>> {
+        let std_runtime = Arc::new((*self).clone());
         let block_process = Rc::new(RunningBlock {
             id: self.process_id.fetch_add(1, Ordering::SeqCst),
             runtime: self.clone(),
             handle: RefCell::new(Some(
                 std::thread::Builder::new()
                     .name(
-                        block
-                            .name()
-                            .unwrap_or_else(|| Cow::Borrowed("<unnamed>"))
-                            .to_string(),
+                        match &block {
+                            BoxedBlockType::Normal(block) => block.name(),
+                            #[cfg(feature = "tokio")]
+                            BoxedBlockType::Async(block) => block.name(),
+                        }
+                        .unwrap_or(Cow::Borrowed("<unnamed>"))
+                        .to_string(),
                     )
                     .spawn(move || {
                         let mut block = block;
                         std::thread::park();
-                        let block_mut = block.as_mut();
+
+                        #[cfg(feature = "tokio")]
+                        let tokio_handle = std_runtime.tokio_handle.clone();
+
+                        let block_runtime = std_runtime as Arc<dyn BlockRuntime>;
                         let block_runtime_ref = block_runtime.as_ref();
-                        Block::prepare(block_mut, block_runtime_ref)
-                            .and_then(|_| <dyn Block>::pre_execute(block_mut, block_runtime_ref))
-                            .and_then(|_| Block::execute(block_mut, block_runtime_ref))
-                            .and_then(|_| <dyn Block>::post_execute(block_mut, block_runtime_ref))
+
+                        match block {
+                            BoxedBlockType::Normal(ref mut block) => {
+                                let block_mut = block.as_mut();
+                                Block::prepare(block_mut, block_runtime_ref)
+                                    .and_then(|_| {
+                                        <dyn Block>::pre_execute(block_mut, block_runtime_ref)
+                                    })
+                                    .and_then(|_| Block::execute(block_mut, block_runtime_ref))
+                                    .and_then(|_| {
+                                        <dyn Block>::post_execute(block_mut, block_runtime_ref)
+                                    })
+                            }
+                            #[cfg(feature = "tokio")]
+                            BoxedBlockType::Async(ref mut block) => {
+                                if let Some(handle) = tokio_handle {
+                                    let block_mut = block.as_mut();
+                                    AsyncBlock::prepare(block_mut, block_runtime_ref)
+                                        .and_then(|_| {
+                                            <dyn AsyncBlock>::pre_execute(
+                                                block_mut,
+                                                block_runtime_ref,
+                                            )
+                                        })
+                                        .and_then(|_| {
+                                            let future = <dyn AsyncBlock>::execute_async(
+                                                block_mut,
+                                                block_runtime_ref,
+                                            );
+
+                                            handle.block_on(future)
+                                        })
+                                        .and_then(|_| {
+                                            <dyn AsyncBlock>::post_execute(
+                                                block_mut,
+                                                block_runtime_ref,
+                                            )
+                                        })
+                                } else {
+                                    panic!("Tried to run async block without tokio runtime!");
+                                }
+                            }
+                        }
                     })
                     .unwrap(),
             )),

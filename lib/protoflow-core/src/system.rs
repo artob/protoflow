@@ -5,9 +5,15 @@ use crate::{
     runtimes::StdRuntime,
     transports::MpscTransport,
     types::Any,
-    Block, BlockID, BlockResult, InputPort, InputPortID, Message, OutputPort, OutputPortID, PortID,
-    PortResult, Process, Runtime, Transport,
+    Block, BlockID, BlockResult, BoxedBlock, BoxedBlockType, InputPort, InputPortID, Message,
+    OutputPort, OutputPortID, PortID, PortResult, Process, Runtime, Transport,
 };
+
+#[cfg(feature = "tokio")]
+use crate::{AsyncBlock, BoxedAsyncBlock};
+
+#[cfg(feature = "tokio")]
+pub type RuntimeHandle = tokio::runtime::Handle;
 
 pub trait SystemBuilding {
     fn input_any(&self) -> InputPort<Any> {
@@ -43,6 +49,10 @@ pub trait SystemBuilding {
     /// Instantiates a block inside the system.
     fn block<B: Block + Clone + 'static>(&mut self, block: B) -> B;
 
+    ///
+    #[cfg(feature = "tokio")]
+    fn block_async<B: AsyncBlock + Clone + 'static>(&mut self, block: B) -> B;
+
     /// Connects two ports of two blocks in the system.
     ///
     /// Both ports must be of the same message type.
@@ -59,7 +69,7 @@ pub struct System<X: Transport + Default + 'static = MpscTransport> {
     pub(crate) runtime: Arc<StdRuntime<X>>,
 
     /// The registered blocks in the system.
-    pub(crate) blocks: VecDeque<Box<dyn Block>>,
+    pub(crate) blocks: VecDeque<BoxedBlockType>,
 
     _phantom: PhantomData<X>,
 }
@@ -111,15 +121,29 @@ impl<X: Transport + Default + 'static> System<X> {
         block
     }
 
+    #[cfg(feature = "tokio")]
+    pub fn block_async<B: AsyncBlock + Clone + 'static>(&mut self, block: B) -> B {
+        self.add_block_async(Box::new(block.clone()));
+        block
+    }
+
     #[doc(hidden)]
-    pub fn add_block(&mut self, block: Box<dyn Block>) -> BlockID {
+    pub fn add_block(&mut self, block: BoxedBlock) -> BlockID {
         let block_id = BlockID::from(self.blocks.len());
-        self.blocks.push_back(block);
+        self.blocks.push_back(BoxedBlockType::Normal(block));
         block_id
     }
 
     #[doc(hidden)]
-    pub fn get_block(&self, block_id: BlockID) -> Option<&Box<dyn Block>> {
+    #[cfg(feature = "tokio")]
+    pub fn add_block_async(&mut self, block: BoxedAsyncBlock) -> BlockID {
+        let block_id = BlockID::from(self.blocks.len());
+        self.blocks.push_back(BoxedBlockType::Async(block));
+        block_id
+    }
+
+    #[doc(hidden)]
+    pub fn get_block(&self, block_id: BlockID) -> Option<&BoxedBlockType> {
         self.blocks.get(block_id.into())
     }
 
@@ -150,6 +174,11 @@ impl SystemBuilding for System {
 
     fn block<B: Block + Clone + 'static>(&mut self, block: B) -> B {
         System::block(self, block)
+    }
+
+    #[cfg(feature = "tokio")]
+    fn block_async<B: AsyncBlock + Clone + 'static>(&mut self, block: B) -> B {
+        System::block_async(self, block)
     }
 
     fn connect<M: Message>(&mut self, source: &OutputPort<M>, target: &InputPort<M>) -> bool {

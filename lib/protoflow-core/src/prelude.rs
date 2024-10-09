@@ -47,9 +47,6 @@ pub type Instant = Duration;
 pub use bytes;
 
 #[doc(hidden)]
-pub use futures;
-
-#[doc(hidden)]
 pub use prost;
 
 #[doc(hidden)]

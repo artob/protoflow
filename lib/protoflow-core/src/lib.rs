@@ -11,6 +11,11 @@ pub mod prelude;
 mod block;
 pub use block::*;
 
+#[cfg(feature = "tokio")]
+mod async_block;
+#[cfg(feature = "tokio")]
+pub use async_block::*;
+
 mod block_descriptor;
 pub use block_descriptor::*;
 

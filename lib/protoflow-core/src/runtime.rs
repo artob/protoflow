@@ -2,7 +2,7 @@
 
 use crate::{
     prelude::{Box, Rc},
-    Block, BlockResult, Process, System, Transport,
+    Block, BlockResult, BoxedBlockType, Process, System, Transport,
 };
 
 pub trait Runtime {
@@ -10,7 +10,7 @@ pub trait Runtime {
     //    self.execute_block(Box::new(block))
     //}
 
-    fn execute_block(&mut self, block: Box<dyn Block>) -> BlockResult<Rc<dyn Process>>;
+    fn execute_block(&mut self, block: BoxedBlockType) -> BlockResult<Rc<dyn Process>>;
 
     fn execute<X: Transport + Default>(
         &mut self,

@@ -34,6 +34,7 @@ serde = [
     "dep:serde_yml",
 ]
 sysml = ["protoflow-core/sysml", "dep:sysml-model"]
+tokio = ["protoflow-core/tokio", "dep:tokio"]
 tracing = ["protoflow-core/tracing", "dep:tracing"]
 unstable = ["protoflow-core/unstable", "protoflow-derive/unstable"]
 
@@ -46,6 +47,7 @@ duration-str = { version = "0.11", default-features = false }
 enum-iterator = "2.1"
 protoflow-core.workspace = true
 protoflow-derive.workspace = true
+tokio = { version = "1.40.0", default-features = false, optional = true }
 tracing = { version = "0.1", default-features = false, optional = true }
 serde = { version = "1.0", default-features = false, features = [
     "derive",

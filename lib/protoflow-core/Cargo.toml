@@ -21,7 +21,6 @@ rand = ["dep:getrandom", "dep:rand"] # FIXME: , "rand/getrandom"]
 serde = ["dep:serde"]
 std = [
     "dogma/std",
-    "futures/std",
     "getrandom?/std",
     "prost/std",
     "prost-types/std",
@@ -32,6 +31,7 @@ std = [
     "tracing?/std",
 ]
 sysml = ["dep:sysml-model"]
+tokio = ["dep:tokio", "dep:async-trait"]
 tracing = ["dep:tracing"]
 unstable = []
 
@@ -41,7 +41,6 @@ cfg_aliases.workspace = true
 [dependencies]
 bytes = { version = "1", default-features = false }
 dogma = { version = "0.1", default-features = false }
-futures = { version = "0.3", default-features = false }
 getrandom = { version = "0.2", optional = true, default-features = false }
 parking_lot = "0.12"
 prost = { version = "0.13", default-features = false, features = ["derive"] }
@@ -53,6 +52,8 @@ serde = { version = "1.0", default-features = false, features = [
 sharded-slab = "0.1.7"
 stability = "0.2"
 sysml-model = { version = "=0.2.3", default-features = false, optional = true }
+tokio = { version = "1.40.0", default-features = false, optional = true }
+async-trait = { version = "0.1.83", optional = true }
 tracing = { version = "0.1", default-features = false, optional = true }
 
 [dev-dependencies]
